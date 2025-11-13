@@ -54,16 +54,14 @@ class DingTalkSender(Sender):
 
         return {"timestamp": timestamp, "sign": sign}
 
-    def send(self, message: Union[str, Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]:
+    def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         发送钉钉消息。
 
-        :param message: 消息内容，可以是字符串（将作为文本消息发送）或符合钉钉机器人格式的字典。
-        :param kwargs: 其他可选参数，例如 at_mobiles 等，会合并到消息字典中。
+        :param message: 消息内容，符合钉钉机器人格式的字典。
+        :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: 钉钉 API 的响应。
         """
-        if isinstance(message, str):
-            message = {"msgtype": "text", "text": {"content": message}}
         message.update(kwargs)  # 合并额外的关键字参数
         headers = {"Content-Type": "application/json"}
 
@@ -141,16 +139,14 @@ class AsyncDingTalkSender(AsyncSender):
 
         return {"timestamp": timestamp, "sign": sign}
 
-    async def send(self, message: Union[str, Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]:
+    async def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         异步发送钉钉消息。
 
-        :param message: 消息内容，可以是字符串（将作为文本消息发送）或符合钉钉机器人格式的字典。
-        :param kwargs: 其他可选参数，例如 at_mobiles 等，会合并到消息字典中。
+        :param message: 消息内容，符合钉钉机器人格式的字典。
+        :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: 钉钉 API 的响应。
         """
-        if isinstance(message, str):
-            message = {"msgtype": "text", "text": {"content": message}}
         message.update(kwargs)  # 合并额外的关键字参数
         headers = {"Content-Type": "application/json"}
 

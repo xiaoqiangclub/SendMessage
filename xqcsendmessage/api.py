@@ -21,8 +21,9 @@ from .core.exceptions import SendMessageError
 # --- 辅助函数：消息体构建 ---
 def _build_dingtalk_wecom_message(
     message: Union[str, Dict[str, Any]],
-    msg_type: str,
+    send_md: bool = False, 
     at_mobiles: Optional[List[str]] = None,
+    at_userids: Optional[List[str]] = None, 
     is_at_all: bool = False,
     touser: Optional[Union[str, List[str]]] = None,
     toparty: Optional[Union[str, List[str]]] = None,
@@ -34,32 +35,55 @@ def _build_dingtalk_wecom_message(
     """
     final_message_body: Dict[str, Any]
     if isinstance(message, str):
-        if msg_type == "markdown":
+        if send_md:
             # 钉钉 Markdown 消息体需要 title 和 text
             if title:
                 final_message_body = {
-                    "msgtype": msg_type,
+                    "msgtype": "markdown",
                     "markdown": {"title": title, "text": message}
                 }
             # 企业微信 Markdown 消息体只需要 content
             else:
-                final_message_body = {
-                    "msgtype": msg_type,
-                    "markdown": {"content": message}
-                }
+                # 钉钉 Markdown 消息体需要 title 和 text, 并且 @ 用户需要添加到 text 中
+                at_text = ""
+                if at_userids:
+                    at_text = "".join([f"@{uid}" for uid in at_userids]) + " "
+                
+                if title:
+                    final_message_body = {
+                        "msgtype": "markdown",
+                        "markdown": {"title": title, "text": at_text + message}
+                    }
+                # 企业微信 Markdown 消息体只需要 content, 并且 @ 用户需要添加到 content 中
+                else:
+                    final_message_body = {
+                        "msgtype": "markdown",
+                        "markdown": {"content": at_text + message}
+                    }
         else:
             final_message_body = {
-                "msgtype": msg_type,
+                "msgtype": "text",
                 "text": {"content": message}
             }
     elif isinstance(message, dict):
         final_message_body = message
         if "msgtype" not in final_message_body:
-            final_message_body["msgtype"] = msg_type
+            final_message_body["msgtype"] = "markdown" if send_md else "text"
         
-        if msg_type == "markdown":
+        if send_md:
+            # 处理 Markdown 消息体中的 @ 用户
+            at_text = ""
+            if at_userids:
+                at_text = "".join([f"@{uid}" for uid in at_userids]) + " "
+
             if "markdown" not in final_message_body:
-                final_message_body["markdown"] = {"content": message}
+                final_message_body["markdown"] = {"content": at_text + message}
+            else:
+                if "content" in final_message_body["markdown"]:
+                    final_message_body["markdown"]["content"] = at_text + final_message_body["markdown"]["content"]
+                if "text" in final_message_body["markdown"]:
+                    final_message_body["markdown"]["text"] = at_text + final_message_body["markdown"]["text"]
+
             if title and "title" not in final_message_body["markdown"]:
                 final_message_body["markdown"]["title"] = title
             if "text" not in final_message_body["markdown"] and "content" in final_message_body["markdown"]:
@@ -68,15 +92,20 @@ def _build_dingtalk_wecom_message(
         raise SendMessageError("❌ 消息期望为字符串或字典类型。")
 
     # 钉钉特有参数
-    if at_mobiles or is_at_all:
+    if at_mobiles or at_userids or is_at_all:  # 修改判断条件
         final_message_body["at"] = {
             "atMobiles": at_mobiles,
+            "atUserIds": at_userids,  # 添加 atUserIds
             "isAtAll": is_at_all
         }
     
     # 企业微信应用消息特有参数
-    if touser:
+    # 如果指定了 toparty 或 totag，且 touser 仍为默认值 "@all"，则不设置 touser
+    if (toparty or totag) and touser == "@all":
+        pass
+    elif touser:
         final_message_body["touser"] = touser if isinstance(touser, str) else "|".join(touser)
+
     if toparty:
         final_message_body["toparty"] = toparty if isinstance(toparty, str) else "|".join(toparty)
     if totag:
@@ -141,31 +170,37 @@ def send_dingtalk(
     message: Union[str, Dict[str, Any]],
     webhook: str,
     secret: Optional[str] = None,
-    msg_type: str = "text",
+    send_md: bool = False,  # 默认为 False，发送 text 格式
     at_mobiles: Optional[List[str]] = None,
+    at_userids: Optional[List[str]] = None,  # 新增 at_userids 参数
     is_at_all: bool = False,
-    title: str = "Markdown消息", # 为钉钉 Markdown 消息添加 title 参数
+    title: Optional[str] = None,  # Markdown 消息的标题，仅对钉钉 Markdown 消息有效
     **kwargs: Any
 ) -> Dict[str, Any]:
     """
     直接发送同步钉钉消息。
 
-    :param message: 消息内容，支持多种格式（text, markdown, link, actionCard, feedCard）。
-                    如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
     :param webhook: 钉钉机器人的 Webhook 地址。
     :param secret: 钉钉机器人的密钥，用于签名。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "link", "actionCard", "feedCard"。
+    :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param at_mobiles: 被 @ 的用户的手机号列表。
     :param is_at_all: 是否 @ 所有人，默认为 False。
     :param title: Markdown 消息的标题，仅对钉钉 Markdown 消息有效。
     :param kwargs: 其他可选参数，将传递给底层的 `DingTalkSender`。
     :return: 发送结果的字典。
     """
+    # 如果指定了 at_mobiles 或 at_userids，则 is_at_all 强制为 False
+    if at_mobiles or at_userids:
+        is_at_all = False
+        
     sender = DingTalkSender(webhook=webhook, secret=secret)
     final_message_body = _build_dingtalk_wecom_message(
         message=message,
-        msg_type=msg_type,
+        send_md=send_md,
         at_mobiles=at_mobiles,
+        at_userids=at_userids,
         is_at_all=is_at_all,
         title=title
     )
@@ -210,8 +245,8 @@ def send_markdown(
             message=message,
             webhook=webhook,
             secret=secret,
-            msg_type="markdown",
-            title=title, # 传递 title 参数
+            send_md=True,
+            title=title,
             **kwargs
         )
     elif platform == "wecom_webhook":
@@ -220,7 +255,7 @@ def send_markdown(
         return send_wecom_webhook(
             message=message,
             webhook=webhook,
-            msg_type="markdown",
+            send_md=True,
             **kwargs
         )
     elif platform == "wecom_app":
@@ -231,7 +266,7 @@ def send_markdown(
             corpid=corpid,
             corpsecret=corpsecret,
             agentid=agentid,
-            msg_type="markdown",
+            send_md=True,
             touser=touser,
             toparty=toparty,
             totag=totag,
@@ -244,22 +279,23 @@ def send_markdown(
 def send_wecom_webhook(
     message: Union[str, Dict[str, Any]],
     webhook: str,
-    msg_type: str = "text",
+    send_md: bool = False,  # 默认为 False，发送 text 格式
     **kwargs: Any
 ) -> Dict[str, Any]:
     """
     直接发送同步企业微信 Webhook 消息。
 
-    :param message: 消息内容。如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
     :param webhook: 企业微信机器人的 Webhook 地址。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "image", "news", "file", "textcard", "template_card"。
+    :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param kwargs: 其他可选参数，将传递给底层的 `WeComWebhookSender`。
     :return: 发送结果的字典。
     """
     sender = WeComWebhookSender(webhook=webhook)
     final_message_body = _build_dingtalk_wecom_message(
         message=message,
-        msg_type=msg_type,
+        send_md=send_md,
     )
     return sender.send(final_message_body, **kwargs)
 
@@ -269,7 +305,7 @@ def send_wecom_app(
     corpid: str,
     corpsecret: str,
     agentid: int,
-    msg_type: str = "text",
+    send_md: bool = False,  # 默认为 False，发送 text 格式
     touser: Optional[Union[str, List[str]]] = "@all",
     toparty: Optional[Union[str, List[str]]] = None,
     totag: Optional[Union[str, List[str]]] = None,
@@ -278,21 +314,26 @@ def send_wecom_app(
     """
     直接发送同步企业微信应用消息。
 
-    :param message: 消息内容。如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
     :param corpid: 企业 ID。
     :param corpsecret: 应用的 Secret。
     :param agentid: 应用的 AgentId。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "image", "voice", "video", "file", "textcard", "news", "mpnews", "markdown", "miniprogram_notice", "template_card"。
+    :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param touser: 指定接收消息的成员，成员 ID 列表（最多支持 1000 个）。默认为 "@all"。
     :param toparty: 指定接收消息的部门 ID 列表（最多支持 100 个）。
     :param totag: 指定接收消息的标签 ID 列表（最多支持 100 个）。
     :param kwargs: 其他可选参数，将传递给底层的 `WeComAppSender`。
     :return: 发送结果的字典。
     """
+    # 如果指定了 toparty 或 totag，且 touser 仍为默认值 "@all"，则将其设为 ""，避免冲突
+    if (toparty or totag) and touser == "@all":
+        touser = ""
+
     sender = WeComAppSender(corpid=corpid, corpsecret=corpsecret, agentid=agentid)
     final_message_body = _build_dingtalk_wecom_message(
         message=message,
-        msg_type=msg_type,
+        send_md=send_md,
         touser=touser,
         toparty=toparty,
         totag=totag,
@@ -356,31 +397,37 @@ async def send_dingtalk_async(
     message: Union[str, Dict[str, Any]],
     webhook: str,
     secret: Optional[str] = None,
-    msg_type: str = "text",
+    send_md: bool = False,  # 默认为 False，发送 text 格式
     at_mobiles: Optional[List[str]] = None,
+    at_userids: Optional[List[str]] = None,  # 新增 at_userids 参数
     is_at_all: bool = False,
-    title: str = "Markdown消息", # 为钉钉 Markdown 消息添加 title 参数
+    title: Optional[str] = None,  # Markdown 消息的标题，仅对钉钉 Markdown 消息有效
     **kwargs: Any
 ) -> Dict[str, Any]:
     """
     直接发送异步钉钉消息。
 
-    :param message: 消息内容，支持多种格式（text, markdown, link, actionCard, feedCard）。
-                    如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
     :param webhook: 钉钉机器人的 Webhook 地址。
     :param secret: 钉钉机器人的密钥，用于签名。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "link", "actionCard", "feedCard"。
+    :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param at_mobiles: 被 @ 的用户的手机号列表。
     :param is_at_all: 是否 @ 所有人，默认为 False。
     :param title: Markdown 消息的标题，仅对钉钉 Markdown 消息有效。
     :param kwargs: 其他可选参数，将传递给底层的 `AsyncDingTalkSender`。
     :return: 发送结果的字典。
     """
+    # 如果指定了 at_mobiles 或 at_userids，则 is_at_all 强制为 False
+    if at_mobiles or at_userids:
+        is_at_all = False
+        
     sender = AsyncDingTalkSender(webhook=webhook, secret=secret)
     final_message_body = _build_dingtalk_wecom_message(
         message=message,
-        msg_type=msg_type,
+        send_md=send_md,
         at_mobiles=at_mobiles,
+        at_userids=at_userids,
         is_at_all=is_at_all,
         title=title
     )
@@ -390,22 +437,23 @@ async def send_dingtalk_async(
 async def send_wecom_webhook_async(
     message: Union[str, Dict[str, Any]],
     webhook: str,
-    msg_type: str = "text",
+    send_md: bool = False,  # 默认为 False，发送 text 格式
     **kwargs: Any
 ) -> Dict[str, Any]:
     """
     直接发送异步企业微信 Webhook 消息。
 
-    :param message: 消息内容。如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
     :param webhook: 企业微信机器人的 Webhook 地址。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "image", "news", "file", "textcard", "template_card"。
+    :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param kwargs: 其他可选参数，将传递给底层的 `AsyncWeComWebhookSender`。
     :return: 发送结果的字典。
     """
     sender = AsyncWeComWebhookSender(webhook=webhook)
     final_message_body = _build_dingtalk_wecom_message(
         message=message,
-        msg_type=msg_type,
+        send_md=send_md,
     )
     return await sender.send(final_message_body, **kwargs)
 
@@ -415,7 +463,7 @@ async def send_wecom_app_async(
     corpid: str,
     corpsecret: str,
     agentid: int,
-    msg_type: str = "text",
+    send_md: bool = False,  # 默认为 False，发送 text 格式
     touser: Optional[Union[str, List[str]]] = "@all",
     toparty: Optional[Union[str, List[str]]] = None,
     totag: Optional[Union[str, List[str]]] = None,
@@ -424,21 +472,26 @@ async def send_wecom_app_async(
     """
     直接发送异步企业微信应用消息。
 
-    :param message: 消息内容。如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
     :param corpid: 企业 ID。
     :param corpsecret: 应用的 Secret。
     :param agentid: 应用的 AgentId。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "image", "voice", "video", "file", "textcard", "news", "mpnews", "markdown", "miniprogram_notice", "template_card"。
+    :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param touser: 指定接收消息的成员，成员 ID 列表（最多支持 1000 个）。默认为 "@all"。
     :param toparty: 指定接收消息的部门 ID 列表（最多支持 100 个）。
     :param totag: 指定接收消息的标签 ID 列表（最多支持 100 个）。
     :param kwargs: 其他可选参数，将传递给底层的 `AsyncWeComAppSender`。
     :return: 发送结果的字典。
     """
+    # 如果指定了 toparty 或 totag，且 touser 仍为默认值 "@all"，则将其设为 ""，避免冲突
+    if (toparty or totag) and touser == "@all":
+        touser = ""
+        
     sender = AsyncWeComAppSender(corpid=corpid, corpsecret=corpsecret, agentid=agentid)
     final_message_body = _build_dingtalk_wecom_message(
         message=message,
-        msg_type=msg_type,
+        send_md=send_md,
         touser=touser,
         toparty=toparty,
         totag=totag,

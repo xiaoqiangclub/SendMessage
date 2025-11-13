@@ -20,9 +20,10 @@ from .api import (
     send_wecom_webhook_async,
     send_wecom_app_async,
 )
+from .core.utils import read_file, read_file_async
 
 __all__ = [
-    # 顶层发送函数
+    # 发送信息
     "send_email",
     "send_dingtalk",
     "send_wecom_webhook",
@@ -31,6 +32,11 @@ __all__ = [
     "send_dingtalk_async",
     "send_wecom_webhook_async",
     "send_wecom_app_async",
+
+    # 文件读取工具
+    "read_file",
+    "read_file_async",
+
     # 异常
     "SendMessageError",
     "HttpError",

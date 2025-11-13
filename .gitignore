@@ -207,3 +207,4 @@ marimo/_lsp/
 __marimo__/
 /分享一个我自用的 Python 消息发送模块，支持邮件、钉钉、企业微信.md
 /poetry.lock
+/examples/test.py

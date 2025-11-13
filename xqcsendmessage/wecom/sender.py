@@ -26,16 +26,14 @@ class WeComWebhookSender(Sender):
         self.webhook = webhook
         self.logger = default_logger
 
-    def send(self, message: Union[str, Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]:
+    def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         发送企业微信 Webhook 消息。
 
-        :param message: 消息内容，可以是字符串（将作为文本消息发送）或符合企业微信机器人支持的格式。
+        :param message: 消息内容，符合企业微信机器人支持的格式。
         :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: API 响应。
         """
-        if isinstance(message, str):
-            message = {"msgtype": "text", "text": {"content": message}}
         message.update(kwargs) # 合并额外的关键字参数
         headers = {"Content-Type": "application/json"}
         try:
@@ -71,16 +69,14 @@ class AsyncWeComWebhookSender(AsyncSender):
         self.webhook = webhook
         self.logger = default_logger
 
-    async def send(self, message: Union[str, Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]:
+    async def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         异步发送企业微信 Webhook 消息。
 
-        :param message: 消息内容，可以是字符串（将作为文本消息发送）或符合企业微信机器人支持的格式。
+        :param message: 消息内容，符合企业微信机器人支持的格式。
         :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: API 响应。
         """
-        if isinstance(message, str):
-            message = {"msgtype": "text", "text": {"content": message}}
         message.update(kwargs) # 合并额外的关键字参数
         headers = {"Content-Type": "application/json"}
         try:
@@ -144,16 +140,14 @@ class WeComAppSender(Sender):
         except httpx.HTTPStatusError as e:
             raise AuthError(f"获取 Access Token 请求失败: {e.response.text}")
 
-    def send(self, message: Union[str, Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]:
+    def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         发送企业微信应用消息。
 
-        :param message: 消息内容，可以是字符串（将作为文本消息发送）或符合企业微信应用消息支持的格式。
+        :param message: 消息内容，符合企业微信应用消息支持的格式。
         :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: API 响应。
         """
-        if isinstance(message, str):
-            message = {"msgtype": "text", "text": {"content": message}}
         message.update(kwargs) # 合并额外的关键字参数
         access_token = self._get_access_token()
         url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
@@ -222,16 +216,14 @@ class AsyncWeComAppSender(AsyncSender):
         except httpx.HTTPStatusError as e:
             raise AuthError(f"获取 Access Token 请求失败: {e.response.text}")
 
-    async def send(self, message: Union[str, Dict[str, Any]], **kwargs: Any) -> Dict[str, Any]:
+    async def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         异步发送企业微信应用消息。
 
-        :param message: 消息内容，可以是字符串（将作为文本消息发送）或符合企业微信应用消息支持的格式。
+        :param message: 消息内容，符合企业微信应用消息支持的格式。
         :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: API 响应。
         """
-        if isinstance(message, str):
-            message = {"msgtype": "text", "text": {"content": message}}
         message.update(kwargs) # 合并额外的关键字参数
         access_token = await self._get_access_token()
         url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
