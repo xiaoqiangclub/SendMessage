@@ -2,7 +2,7 @@
 
 ![XQCSendMessage Logo](https://s2.loli.net/2025/11/12/Ey4Vkr7jgYobidS.jpg)
 
-[![Python Versions](https://img.shields.io/badge/Python-3.10%2B-blue)](https://github.com/xiaoqiangclub/XQCSendMessage)[![PyPI version](https://img.shields.io/badge/PyPI-0.1.0-blue)](https://pypi.org/project/xqcsendmessage) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python Versions](https://img.shields.io/badge/Python-3.10%2B-blue)](https://github.com/xiaoqiangclub/SendMessage)[![PyPI version](https://img.shields.io/badge/PyPI-0.1.0-blue)](https://pypi.org/project/xqcsendmessage) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `XQCSendMessage` 是一个为 Python 设计的、统一且便捷的消息发送模块，支持通过邮件、钉钉、企业微信等多种渠道发送通知。无论同步还是异步场景，它都提供了简洁的 API。
 
