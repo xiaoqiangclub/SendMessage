@@ -27,20 +27,43 @@ def _build_dingtalk_wecom_message(
     touser: Optional[Union[str, List[str]]] = None,
     toparty: Optional[Union[str, List[str]]] = None,
     totag: Optional[Union[str, List[str]]] = None,
+    title: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     构建钉钉或企业微信的消息体，处理消息格式和 @ 人等参数。
     """
     final_message_body: Dict[str, Any]
     if isinstance(message, str):
-        final_message_body = {
-            "msgtype": msg_type,
-            "text": {"content": message}
-        }
+        if msg_type == "markdown":
+            # 钉钉 Markdown 消息体需要 title 和 text
+            if title:
+                final_message_body = {
+                    "msgtype": msg_type,
+                    "markdown": {"title": title, "text": message}
+                }
+            # 企业微信 Markdown 消息体只需要 content
+            else:
+                final_message_body = {
+                    "msgtype": msg_type,
+                    "markdown": {"content": message}
+                }
+        else:
+            final_message_body = {
+                "msgtype": msg_type,
+                "text": {"content": message}
+            }
     elif isinstance(message, dict):
         final_message_body = message
         if "msgtype" not in final_message_body:
             final_message_body["msgtype"] = msg_type
+        
+        if msg_type == "markdown":
+            if "markdown" not in final_message_body:
+                final_message_body["markdown"] = {"content": message}
+            if title and "title" not in final_message_body["markdown"]:
+                final_message_body["markdown"]["title"] = title
+            if "text" not in final_message_body["markdown"] and "content" in final_message_body["markdown"]:
+                final_message_body["markdown"]["text"] = final_message_body["markdown"]["content"]
     else:
         raise SendMessageError("❌ 消息期望为字符串或字典类型。")
 
@@ -121,6 +144,7 @@ def send_dingtalk(
     msg_type: str = "text",
     at_mobiles: Optional[List[str]] = None,
     is_at_all: bool = False,
+    title: str = "Markdown消息", # 为钉钉 Markdown 消息添加 title 参数
     **kwargs: Any
 ) -> Dict[str, Any]:
     """
@@ -130,9 +154,10 @@ def send_dingtalk(
                     如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
     :param webhook: 钉钉机器人的 Webhook 地址。
     :param secret: 钉钉机器人的密钥，用于签名。
-    :param msg_type: 消息类型，默认为 "text"。
+    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "link", "actionCard", "feedCard"。
     :param at_mobiles: 被 @ 的用户的手机号列表。
     :param is_at_all: 是否 @ 所有人，默认为 False。
+    :param title: Markdown 消息的标题，仅对钉钉 Markdown 消息有效。
     :param kwargs: 其他可选参数，将传递给底层的 `DingTalkSender`。
     :return: 发送结果的字典。
     """
@@ -142,8 +167,78 @@ def send_dingtalk(
         msg_type=msg_type,
         at_mobiles=at_mobiles,
         is_at_all=is_at_all,
+        title=title
     )
     return sender.send(final_message_body, **kwargs)
+
+
+def send_markdown(
+    message: str,
+    platform: str,
+    webhook: Optional[str] = None,
+    secret: Optional[str] = None,
+    corpid: Optional[str] = None,
+    corpsecret: Optional[str] = None,
+    agentid: Optional[int] = None,
+    touser: Optional[Union[str, List[str]]] = "@all",
+    toparty: Optional[Union[str, List[str]]] = None,
+    totag: Optional[Union[str, List[str]]] = None,
+    title: str = "Markdown消息", # 为钉钉 Markdown 消息添加 title 参数
+    **kwargs: Any
+) -> Dict[str, Any]:
+    """
+    统一发送同步 Markdown 消息。
+
+    :param message: Markdown 格式的消息内容。
+    :param platform: 目标平台，支持 "dingtalk", "wecom_webhook", "wecom_app"。
+    :param webhook: 钉钉或企业微信 Webhook 地址。
+    :param secret: 钉钉机器人的密钥。
+    :param corpid: 企业微信企业 ID。
+    :param corpsecret: 企业微信应用 Secret。
+    :param agentid: 企业微信应用 AgentId。
+    :param touser: 企业微信应用消息接收成员。
+    :param toparty: 企业微信应用消息接收部门。
+    :param totag: 企业微信应用消息接收标签。
+    :param title: Markdown 消息的标题，仅对钉钉 Markdown 消息有效。
+    :param kwargs: 其他可选参数。
+    :return: 发送结果的字典。
+    """
+    if platform == "dingtalk":
+        if not webhook:
+            raise SendMessageError("❌ 钉钉发送 Markdown 消息缺少 webhook。")
+        return send_dingtalk(
+            message=message,
+            webhook=webhook,
+            secret=secret,
+            msg_type="markdown",
+            title=title, # 传递 title 参数
+            **kwargs
+        )
+    elif platform == "wecom_webhook":
+        if not webhook:
+            raise SendMessageError("❌ 企业微信 Webhook 发送 Markdown 消息缺少 webhook。")
+        return send_wecom_webhook(
+            message=message,
+            webhook=webhook,
+            msg_type="markdown",
+            **kwargs
+        )
+    elif platform == "wecom_app":
+        if not (corpid and corpsecret and agentid):
+            raise SendMessageError("❌ 企业微信应用发送 Markdown 消息缺少 corpid, corpsecret 或 agentid。")
+        return send_wecom_app(
+            message=message,
+            corpid=corpid,
+            corpsecret=corpsecret,
+            agentid=agentid,
+            msg_type="markdown",
+            touser=touser,
+            toparty=toparty,
+            totag=totag,
+            **kwargs
+        )
+    else:
+        raise SendMessageError(f"❌ 不支持的平台: {platform}")
 
 
 def send_wecom_webhook(
@@ -157,7 +252,7 @@ def send_wecom_webhook(
 
     :param message: 消息内容。如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
     :param webhook: 企业微信机器人的 Webhook 地址。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "image", "news", "file", "textcard", "template_card" 等。
+    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "image", "news", "file", "textcard", "template_card"。
     :param kwargs: 其他可选参数，将传递给底层的 `WeComWebhookSender`。
     :return: 发送结果的字典。
     """
@@ -187,7 +282,7 @@ def send_wecom_app(
     :param corpid: 企业 ID。
     :param corpsecret: 应用的 Secret。
     :param agentid: 应用的 AgentId。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "image", "voice", "video", "file", "textcard", "news", "mpnews", "markdown", "miniprogram_notice", "template_card" 等。
+    :param msg_type: 消息类型，默认为 "text"。支持 "text", "image", "voice", "video", "file", "textcard", "news", "mpnews", "markdown", "miniprogram_notice", "template_card"。
     :param touser: 指定接收消息的成员，成员 ID 列表（最多支持 1000 个）。默认为 "@all"。
     :param toparty: 指定接收消息的部门 ID 列表（最多支持 100 个）。
     :param totag: 指定接收消息的标签 ID 列表（最多支持 100 个）。
@@ -264,6 +359,7 @@ async def send_dingtalk_async(
     msg_type: str = "text",
     at_mobiles: Optional[List[str]] = None,
     is_at_all: bool = False,
+    title: str = "Markdown消息", # 为钉钉 Markdown 消息添加 title 参数
     **kwargs: Any
 ) -> Dict[str, Any]:
     """
@@ -273,9 +369,10 @@ async def send_dingtalk_async(
                     如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
     :param webhook: 钉钉机器人的 Webhook 地址。
     :param secret: 钉钉机器人的密钥，用于签名。
-    :param msg_type: 消息类型，默认为 "text"。
+    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "link", "actionCard", "feedCard"。
     :param at_mobiles: 被 @ 的用户的手机号列表。
     :param is_at_all: 是否 @ 所有人，默认为 False。
+    :param title: Markdown 消息的标题，仅对钉钉 Markdown 消息有效。
     :param kwargs: 其他可选参数，将传递给底层的 `AsyncDingTalkSender`。
     :return: 发送结果的字典。
     """
@@ -285,6 +382,7 @@ async def send_dingtalk_async(
         msg_type=msg_type,
         at_mobiles=at_mobiles,
         is_at_all=is_at_all,
+        title=title
     )
     return await sender.send(final_message_body, **kwargs)
 
@@ -300,7 +398,7 @@ async def send_wecom_webhook_async(
 
     :param message: 消息内容。如果为 text 类型，可以直接传入字符串；其他类型需要传入字典。
     :param webhook: 企业微信机器人的 Webhook 地址。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "image", "news", "file", "textcard", "template_card" 等。
+    :param msg_type: 消息类型，默认为 "text"。支持 "text", "markdown", "image", "news", "file", "textcard", "template_card"。
     :param kwargs: 其他可选参数，将传递给底层的 `AsyncWeComWebhookSender`。
     :return: 发送结果的字典。
     """
@@ -330,7 +428,7 @@ async def send_wecom_app_async(
     :param corpid: 企业 ID。
     :param corpsecret: 应用的 Secret。
     :param agentid: 应用的 AgentId。
-    :param msg_type: 消息类型，默认为 "text"。支持 "text", "image", "voice", "video", "file", "textcard", "news", "mpnews", "markdown", "miniprogram_notice", "template_card" 等。
+    :param msg_type: 消息类型，默认为 "text"。支持 "text", "image", "voice", "video", "file", "textcard", "news", "mpnews", "markdown", "miniprogram_notice", "template_card"。
     :param touser: 指定接收消息的成员，成员 ID 列表（最多支持 1000 个）。默认为 "@all"。
     :param toparty: 指定接收消息的部门 ID 列表（最多支持 100 个）。
     :param totag: 指定接收消息的标签 ID 列表（最多支持 100 个）。
