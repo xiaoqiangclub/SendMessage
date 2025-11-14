@@ -301,11 +301,12 @@ def send_wecom_webhook(
 
 
 def send_wecom_app(
-    message: Union[str, Dict[str, Any]],
     corpid: str,
     corpsecret: str,
     agentid: int,
-    send_md: bool = False,  # 默认为 False，发送 text 格式
+    message: Optional[Union[str, Dict[str, Any]]] = None,
+    image_path: Optional[str] = None,
+    send_md: bool = False,
     touser: Optional[Union[str, List[str]]] = "@all",
     toparty: Optional[Union[str, List[str]]] = None,
     totag: Optional[Union[str, List[str]]] = None,
@@ -314,11 +315,12 @@ def send_wecom_app(
     """
     直接发送同步企业微信应用消息。
 
-    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
-                    如果传入字典，则直接作为消息体发送。
     :param corpid: 企业 ID。
     :param corpsecret: 应用的 Secret。
     :param agentid: 应用的 AgentId。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
+    :param image_path: 图片路径。如果提供，将发送图片消息，并忽略 message 和 send_md。
     :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param touser: 指定接收消息的成员，成员 ID 列表（最多支持 1000 个）。默认为 "@all"。
     :param toparty: 指定接收消息的部门 ID 列表（最多支持 100 个）。
@@ -326,19 +328,38 @@ def send_wecom_app(
     :param kwargs: 其他可选参数，将传递给底层的 `WeComAppSender`。
     :return: 发送结果的字典。
     """
+    if not message and not image_path:
+        raise SendMessageError("❌ 必须提供 message 或 image_path。")
+
     # 如果指定了 toparty 或 totag，且 touser 仍为默认值 "@all"，则将其设为 ""，避免冲突
     if (toparty or totag) and touser == "@all":
         touser = ""
 
     sender = WeComAppSender(corpid=corpid, corpsecret=corpsecret, agentid=agentid)
-    final_message_body = _build_dingtalk_wecom_message(
-        message=message,
-        send_md=send_md,
-        touser=touser,
-        toparty=toparty,
-        totag=totag,
-    )
-    return sender.send(final_message_body, **kwargs)
+    
+    if image_path:
+        # 准备一个包含接收者信息的基础消息体
+        recipient_payload: Dict[str, Any] = {}
+        if touser:
+            recipient_payload["touser"] = touser if isinstance(touser, str) else "|".join(touser)
+        if toparty:
+            recipient_payload["toparty"] = toparty if isinstance(toparty, str) else "|".join(toparty)
+        if totag:
+            recipient_payload["totag"] = totag if isinstance(totag, str) else "|".join(totag)
+        
+        return sender.send(recipient_payload, image_path=image_path, **kwargs)
+    else:
+        if message is None:
+            raise SendMessageError("❌ 在不发送图片时，必须提供 message。")
+        
+        final_message_body = _build_dingtalk_wecom_message(
+            message=message,
+            send_md=send_md,
+            touser=touser,
+            toparty=toparty,
+            totag=totag,
+        )
+        return sender.send(final_message_body, **kwargs)
 
 
 # --- 异步发送函数 ---
@@ -459,11 +480,12 @@ async def send_wecom_webhook_async(
 
 
 async def send_wecom_app_async(
-    message: Union[str, Dict[str, Any]],
     corpid: str,
     corpsecret: str,
     agentid: int,
-    send_md: bool = False,  # 默认为 False，发送 text 格式
+    message: Optional[Union[str, Dict[str, Any]]] = None,
+    image_path: Optional[str] = None,
+    send_md: bool = False,
     touser: Optional[Union[str, List[str]]] = "@all",
     toparty: Optional[Union[str, List[str]]] = None,
     totag: Optional[Union[str, List[str]]] = None,
@@ -472,11 +494,12 @@ async def send_wecom_app_async(
     """
     直接发送异步企业微信应用消息。
 
-    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
-                    如果传入字典，则直接作为消息体发送。
     :param corpid: 企业 ID。
     :param corpsecret: 应用的 Secret。
     :param agentid: 应用的 AgentId。
+    :param message: 消息内容。如果 send_md 为 True，则按 Markdown 格式发送；否则按 text 格式发送。
+                    如果传入字典，则直接作为消息体发送。
+    :param image_path: 图片路径。如果提供，将发送图片消息，并忽略 message 和 send_md。
     :param send_md: 是否发送 Markdown 格式消息，默认为 False (发送 text 格式)。
     :param touser: 指定接收消息的成员，成员 ID 列表（最多支持 1000 个）。默认为 "@all"。
     :param toparty: 指定接收消息的部门 ID 列表（最多支持 100 个）。
@@ -484,16 +507,35 @@ async def send_wecom_app_async(
     :param kwargs: 其他可选参数，将传递给底层的 `AsyncWeComAppSender`。
     :return: 发送结果的字典。
     """
+    if not message and not image_path:
+        raise SendMessageError("❌ 必须提供 message 或 image_path。")
+
     # 如果指定了 toparty 或 totag，且 touser 仍为默认值 "@all"，则将其设为 ""，避免冲突
     if (toparty or totag) and touser == "@all":
         touser = ""
         
     sender = AsyncWeComAppSender(corpid=corpid, corpsecret=corpsecret, agentid=agentid)
-    final_message_body = _build_dingtalk_wecom_message(
-        message=message,
-        send_md=send_md,
-        touser=touser,
-        toparty=toparty,
-        totag=totag,
-    )
-    return await sender.send(final_message_body, **kwargs)
+    
+    if image_path:
+        # 准备一个包含接收者信息的基础消息体
+        recipient_payload: Dict[str, Any] = {}
+        if touser:
+            recipient_payload["touser"] = touser if isinstance(touser, str) else "|".join(touser)
+        if toparty:
+            recipient_payload["toparty"] = toparty if isinstance(toparty, str) else "|".join(toparty)
+        if totag:
+            recipient_payload["totag"] = totag if isinstance(totag, str) else "|".join(totag)
+            
+        return await sender.send(recipient_payload, image_path=image_path, **kwargs)
+    else:
+        if message is None:
+            raise SendMessageError("❌ 在不发送图片时，必须提供 message。")
+            
+        final_message_body = _build_dingtalk_wecom_message(
+            message=message,
+            send_md=send_md,
+            touser=touser,
+            toparty=toparty,
+            totag=totag,
+        )
+        return await sender.send(final_message_body, **kwargs)

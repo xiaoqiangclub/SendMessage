@@ -29,7 +29,7 @@
 - **多渠道支持**:
   - 📧 **邮件**: 支持 SMTP，可自定义附件和 HTML 内容。
   - 🤖 **钉钉**: 支持 Webhook 机器人，包含签名验证和多种 @ 用户方式。
-  - 🏢 **企业微信**: 同时支持 `Webhook` 和 `应用消息` 两种模式。
+  - 🏢 **企业微信**: 支持 `Webhook` 和 `应用消息`，应用消息模式下可直接发送图片。
 - **同步与异步**: 为每个发送功能都提供了同步和异步 (`_async`) 版本。
 - **便捷工具**:
   - 内置 `send_markdown` 函数，可直接读取 Markdown 文件并发送。
@@ -102,11 +102,12 @@ except Exception as e:
 
 ### 企业微信应用消息
 
-`send_wecom_app(message, corpid, corpsecret, agentid, **kwargs)`
+`send_wecom_app(corpid, corpsecret, agentid, message=None, image_path=None, **kwargs)`
 `send_wecom_app_async(...)`
 
-- `message` (Union[str, Dict]): 消息内容。
 - `corpid`, `corpsecret`, `agentid`: 企业微信应用的凭据。
+- `message` (Optional[Union[str, Dict]]): 消息内容。
+- `image_path` (Optional[str]): 本地图片的路径。如果提供，将直接发送图片。
 - `send_md` (bool): `True` 表示以 Markdown 格式发送，默认为 `False` (Text 格式)。
 - `touser` (Optional[str]): 接收者 ID，多个用 `|` 分隔。默认为 `@all`。
 - `toparty` (Optional[str]): 接收部门 ID。
@@ -159,6 +160,18 @@ send_dingtalk(
     send_md=True,
     title="项目更新通知",
     at_mobiles=["13900000000"]
+)
+```
+
+**发送企业微信应用图片**
+```python
+from xqcsendmessage import send_wecom_app
+
+send_wecom_app(
+    corpid="YOUR_CORP_ID",
+    corpsecret="YOUR_CORP_SECRET",
+    agentid=YOUR_AGENT_ID,
+    image_path="path/to/your/image.jpg"
 )
 ```
 

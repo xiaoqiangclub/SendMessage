@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xqcsendmessage"
-version = "0.1.0"
+version = "0.1.1"
 description = "一个 XiaoqiangClub 自用的消息发送模块"
 authors = ["Xiaoqiang <xiaoqiangclub@hotmail.com>"]
 license = "MIT"

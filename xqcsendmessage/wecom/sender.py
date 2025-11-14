@@ -5,10 +5,10 @@
 # 文件路径：xqcsendmessage/wecom/sender.py
 
 import httpx
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional
 
 from ..core.abc import Sender, AsyncSender
-from ..core.exceptions import HttpError, AuthError
+from ..core.exceptions import HttpError, AuthError, SendMessageError
 from ..core.logger import default_logger
 
 
@@ -114,7 +114,7 @@ class WeComAppSender(Sender):
         self.corpsecret = corpsecret
         self.agentid = agentid
         self.logger = default_logger
-        self._access_token = None
+        self._access_token: Optional[str] = None
 
     def _get_access_token(self) -> str:
         """
@@ -140,6 +140,37 @@ class WeComAppSender(Sender):
         except httpx.HTTPStatusError as e:
             raise AuthError(f"获取 Access Token 请求失败: {e.response.text}")
 
+    def _upload_media(self, image_path: str) -> str:
+        """
+        上传图片到企业微信临时素材。
+
+        :param image_path: 图片文件的路径。
+        :return: media_id。
+        """
+        access_token = self._get_access_token()
+        upload_url = f"https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token={access_token}&type=image"
+        
+        try:
+            with open(image_path, "rb") as f:
+                files = {"media": (image_path, f, "image/jpeg")}
+                with httpx.Client() as client:
+                    response = client.post(upload_url, files=files)
+                    response.raise_for_status()
+                    data = response.json()
+                    if data.get("media_id"):
+                        self.logger.info(f"🎉 图片上传成功: {data['media_id']}")
+                        return data["media_id"]
+                    else:
+                        raise HttpError(f"上传图片失败: {data.get('errmsg')}")
+        except FileNotFoundError:
+            raise SendMessageError(f"❌ 图片文件未找到: {image_path}")
+        except httpx.HTTPStatusError as e:
+            self.logger.error(f"🔥 上传图片失败: {e.response.text}")
+            raise HttpError(f"上传图片失败: {e.response.text}", e.response.status_code)
+        except Exception as e:
+            self.logger.error(f"🔥 上传图片时发生未知错误: {e}")
+            raise
+
     def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         发送企业微信应用消息。
@@ -148,16 +179,31 @@ class WeComAppSender(Sender):
         :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: API 响应。
         """
-        message.update(kwargs) # 合并额外的关键字参数
+        image_path = kwargs.pop("image_path", None)
+        
+        if image_path:
+            media_id = self._upload_media(image_path)
+            final_payload = {
+                "msgtype": "image",
+                "image": {"media_id": media_id},
+                "touser": message.get("touser"),
+                "toparty": message.get("toparty"),
+                "totag": message.get("totag"),
+            }
+            final_payload = {k: v for k, v in final_payload.items() if v is not None}
+        else:
+            final_payload = message
+            final_payload.update(kwargs)
+
         access_token = self._get_access_token()
         url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
 
-        message["agentid"] = self.agentid
+        final_payload["agentid"] = self.agentid
 
         headers = {"Content-Type": "application/json"}
         try:
             with httpx.Client() as client:
-                response = client.post(url, headers=headers, json=message)
+                response = client.post(url, headers=headers, json=final_payload)
                 response.raise_for_status()
                 result = response.json()
                 if result.get("errcode") != 0:
@@ -190,7 +236,7 @@ class AsyncWeComAppSender(AsyncSender):
         self.corpsecret = corpsecret
         self.agentid = agentid
         self.logger = default_logger
-        self._access_token = None
+        self._access_token: Optional[str] = None
 
     async def _get_access_token(self) -> str:
         """
@@ -216,6 +262,38 @@ class AsyncWeComAppSender(AsyncSender):
         except httpx.HTTPStatusError as e:
             raise AuthError(f"获取 Access Token 请求失败: {e.response.text}")
 
+    async def _upload_media_async(self, image_path: str) -> str:
+        """
+        异步上传图片到企业微信临时素材。
+
+        :param image_path: 图片文件的路径。
+        :return: media_id。
+        """
+        access_token = await self._get_access_token()
+        upload_url = f"https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token={access_token}&type=image"
+        
+        try:
+            # 注意：这里使用了同步文件读取，对于大文件可能会阻塞事件循环。
+            with open(image_path, "rb") as f:
+                files = {"media": (image_path, f, "image/jpeg")}
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(upload_url, files=files)
+                    response.raise_for_status()
+                    data = response.json()
+                    if data.get("media_id"):
+                        self.logger.info(f"🎉 图片上传成功: {data['media_id']}")
+                        return data["media_id"]
+                    else:
+                        raise HttpError(f"上传图片失败: {data.get('errmsg')}")
+        except FileNotFoundError:
+            raise SendMessageError(f"❌ 图片文件未找到: {image_path}")
+        except httpx.HTTPStatusError as e:
+            self.logger.error(f"🔥 上传图片失败: {e.response.text}")
+            raise HttpError(f"上传图片失败: {e.response.text}", e.response.status_code)
+        except Exception as e:
+            self.logger.error(f"🔥 上传图片时发生未知错误: {e}")
+            raise
+
     async def send(self, message: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         """
         异步发送企业微信应用消息。
@@ -224,16 +302,31 @@ class AsyncWeComAppSender(AsyncSender):
         :param kwargs: 其他可选参数，会合并到消息字典中。
         :return: API 响应。
         """
-        message.update(kwargs) # 合并额外的关键字参数
+        image_path = kwargs.pop("image_path", None)
+        
+        if image_path:
+            media_id = await self._upload_media_async(image_path)
+            final_payload = {
+                "msgtype": "image",
+                "image": {"media_id": media_id},
+                "touser": message.get("touser"),
+                "toparty": message.get("toparty"),
+                "totag": message.get("totag"),
+            }
+            final_payload = {k: v for k, v in final_payload.items() if v is not None}
+        else:
+            final_payload = message
+            final_payload.update(kwargs)
+
         access_token = await self._get_access_token()
         url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
 
-        message["agentid"] = self.agentid
+        final_payload["agentid"] = self.agentid
 
         headers = {"Content-Type": "application/json"}
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=headers, json=message)
+                response = await client.post(url, headers=headers, json=final_payload)
                 response.raise_for_status()
                 result = response.json()
                 if result.get("errcode") != 0:
